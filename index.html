@@ -258,11 +258,19 @@ var gameTimers = [];
    СОХРАНЕНИЕ / ЗАГРУЗКА (URL-параметр ?d=)
 ============================================================ */
 function saveData(d) {
-  // Фото включаем прямо в URL (сжаты до 160px) — мама тоже увидит
+  // Фото включаем прямо в URL (сжаты до 120px) — мама тоже увидит
   var obj = { n: d.name, t: d.text, s: d.sig, p: d.photos || [] };
   var encoded = encodeURIComponent(JSON.stringify(obj));
   var base = location.href.split('?')[0].split('#')[0];
-  try { history.replaceState({}, '', base + '?d=' + encoded); } catch(e) {}
+  try {
+    history.replaceState({}, '', base + '?d=' + encoded);
+  } catch(e) {
+    // URL слишком длинный — сохраняем без фото
+    var obj2 = { n: d.name, t: d.text, s: d.sig, p: [] };
+    var enc2 = encodeURIComponent(JSON.stringify(obj2));
+    try { history.replaceState({}, '', base + '?d=' + enc2); } catch(e2) {}
+    toast('⚠️ Фото не войдут в ссылку — слишком большие');
+  }
 }
 
 function loadData() {
@@ -292,15 +300,20 @@ document.getElementById('pinput').addEventListener('change', function(e) {
     r.onload = function(ev) {
       var img = new Image();
       img.onload = function() {
-        // Маленький размер чтобы фото влезло в URL и мама увидела
-        var MAX = 160, w = img.width, h = img.height;
-        if (w > h) { h = Math.round(h*MAX/w); w = MAX; }
-        else       { w = Math.round(w*MAX/h); h = MAX; }
+        // Сжимаем если нужно, сохраняем base64 прямо в URL
+        var MAX = 600, w = img.width, h = img.height;
+        if (w > MAX || h > MAX) {
+          if (w > h) { h = Math.round(h*MAX/w); w = MAX; }
+          else       { w = Math.round(w*MAX/h); h = MAX; }
+        }
         var c = document.createElement('canvas');
         c.width = w; c.height = h;
         c.getContext('2d').drawImage(img, 0, 0, w, h);
-        G.photos.push(c.toDataURL('image/jpeg', .25));
-        if (++done === files.length) renderThumbs();
+        G.photos.push(c.toDataURL('image/jpeg', .7));
+        if (++done === files.length) {
+          G.uploading = false;
+          renderThumbs();
+        }
       };
       img.src = ev.target.result;
     };
@@ -310,8 +323,8 @@ document.getElementById('pinput').addEventListener('change', function(e) {
 
 function renderThumbs() {
   var t = document.getElementById('thumbs');
-  t.innerHTML = G.photos.map(function(s, i) {
-    return '<div class="thumb"><img src="'+s+'"><button class="thumb-del" data-i="'+i+'">✕</button></div>';
+  t.innerHTML = G.photos.map(function(src, i) {
+    return '<div class="thumb"><img src="'+src+'"><button class="thumb-del" data-i="'+i+'">✕</button></div>';
   }).join('');
   t.querySelectorAll('.thumb-del').forEach(function(b) {
     b.addEventListener('click', function(e) {
@@ -500,7 +513,9 @@ function showGreeting() {
   var sec = document.getElementById('photos-sec');
   var grid = document.getElementById('photos-grid');
   if (G.photos && G.photos.length) {
-    grid.innerHTML = G.photos.map(function(s){ return '<div class="photo-cell"><img src="'+s+'"></div>'; }).join('');
+    grid.innerHTML = G.photos.map(function(src){ 
+      return '<div class="photo-cell"><img src="'+src+'"></div>'; 
+    }).join('');
     sec.style.display = '';
   } else {
     sec.style.display = 'none';
